@@ -1,5 +1,5 @@
-// Copyright 2022 Horizon Inc. All Rights Reserved.
-// Author: zhendong.peng@horizon.ai (Zhendong Peng)
+// Copyright 2024 D-Robotics Inc. All Rights Reserved.
+// Author: zhendong.peng@d-robotics.cc (Zhendong Peng)
 
 #ifndef MODEL_TTS_API_H_
 #define MODEL_TTS_API_H_

@@ -22,7 +22,7 @@ If an audio device such as `pcmC0D1p` appears, it means the settings are correct
 To run for the first time, download and extract the model file. The detailed commands are as follows:
 
 ```bash
-wget http://sunrise.horizon.cc//tts-model/tts_model.tar.gz
+wget http://archive.d-robotics.cc/tros/tts-model/tts_model.tar.gz
 sudo tar -xf tts_model.tar.gz -C /opt/tros/${TROS_DISTRO}/lib/hobot_tts/
 ```
 

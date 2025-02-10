@@ -15,7 +15,6 @@
 #include "hobot_tts/hobot_tts.h"
 
 #include <alsa/asoundlib.h>
-#include <samplerate.h>
 
 #include <fstream>
 #include <iostream>
@@ -58,6 +57,7 @@ HobotTTSNode::HobotTTSNode(rclcpp::Node::SharedPtr& nh) : nh_(nh) {
 
   processing_thread_ = std::thread(&HobotTTSNode::ProcessMessages, this);
   playback_thread_ = std::thread(&HobotTTSNode::PlaybackMessages, this);
+  resample_thread_ = std::thread(&HobotTTSNode::ResampleMessages, this);
 
   int err_code = 0;
   std::string tros_distro
@@ -117,6 +117,18 @@ int HobotTTSNode::ConvertToPCM(const std::string& msg,
   pcm_data.reset(new float[pcm_size]);
   memcpy(pcm_data.get(), pcm_data_, pcm_size * sizeof(float));
 
+#if 0
+  if (device_rate_ != info_.sample_rate) {
+    auto inputdata = std::vector<float>((float*)pcm_data_, (float*)pcm_data_ + pcm_size);
+    auto pcm_float_v = resampleAudio(inputdata, info_.sample_rate, device_rate_);
+    pcm_size = pcm_float_v.size();
+    pcm_data.reset(new float[pcm_float_v.size()]);
+    memcpy(pcm_data.get(), pcm_float_v.data(), pcm_float_v.size() * sizeof(float));
+  } else {
+    pcm_data.reset(new float[pcm_size]);
+    memcpy(pcm_data.get(), pcm_data_, pcm_size * sizeof(float));
+  }
+#endif
   return 0;
 }
 
@@ -188,15 +200,56 @@ void HobotTTSNode::ProcessMessages() {
         int pcm_size;
         auto ret = ConvertToPCM(msg, pcm_data, pcm_size);
         if (!ret) {
-          std::lock_guard<std::mutex> playback_lock(playback_mutex_);
-          if (playback_queue_.size() >= kMaxPlaybackQueueSize) {
-            // Discard the oldest PCM data if the queue size exceeds the limit
-            playback_queue_.pop();
+          if (device_rate_ != info_.sample_rate)  {
+            std::lock_guard<std::mutex> playback_lock(resample_mutex_);
+            if (resample_queue_.size() >= kMaxPlaybackQueueSize) {
+              // Discard the oldest PCM data if the queue size exceeds the limit
+              resample_queue_.pop();
+            }
+            resample_queue_.push(std::make_pair(std::move(pcm_data), pcm_size));
+            cv_resample_.notify_one();
+          } else {
+            std::lock_guard<std::mutex> playback_lock(playback_mutex_);
+            if (playback_queue_.size() >= kMaxPlaybackQueueSize) {
+              // Discard the oldest PCM data if the queue size exceeds the limit
+              playback_queue_.pop();
+            }
+            playback_queue_.push(std::make_pair(std::move(pcm_data), pcm_size));
+            cv_playback_.notify_one();
           }
-          playback_queue_.push(std::make_pair(std::move(pcm_data), pcm_size));
-          cv_playback_.notify_one();
         }
       }
+    }
+  }
+}
+
+void HobotTTSNode::ResampleMessages() {
+  while (rclcpp::ok()) {
+    std::unique_lock<std::mutex> lock(resample_mutex_);
+    cv_resample_.wait(
+        lock, [this] { return !resample_queue_.empty() || stop_playback_; });
+
+    if (stop_playback_ && resample_queue_.empty()) {
+      break;
+    }
+    while (!resample_queue_.empty()) {
+      auto pcm_data = std::move(resample_queue_.front().first);
+      auto pcm_size = resample_queue_.front().second;
+      resample_queue_.pop();
+      std::vector<float> pcm_float_v;
+      auto inputdata = std::vector<float>(pcm_data.get(), pcm_data.get() + pcm_size);
+      pcm_float_v = resampleAudio(inputdata, info_.sample_rate, device_rate_);
+      std::unique_ptr<float[]> re_pcm_data;
+      re_pcm_data.reset(new float[pcm_float_v.size()]);
+      int re_pcm_size = pcm_float_v.size();
+      memcpy((char *)re_pcm_data.get(), (char *)pcm_float_v.data(), re_pcm_size * sizeof(float));
+      //std::lock_guard<std::mutex> playback_lock(playback_mutex_);
+      if (playback_queue_.size() >= kMaxPlaybackQueueSize) {
+        // Discard the oldest PCM data if the queue size exceeds the limit
+        playback_queue_.pop();
+      }
+      playback_queue_.push(std::make_pair(std::move(re_pcm_data), re_pcm_size));
+      cv_playback_.notify_one();
     }
   }
 }
@@ -215,6 +268,7 @@ void HobotTTSNode::PlaybackMessages() {
       auto pcm_size = playback_queue_.front().second;
       playback_queue_.pop();
       float* pcm_float;
+#if 0
       std::vector<float> pcm_float_v;
       if (device_rate_ != info_.sample_rate) {
         auto inputdata = std::vector<float>(pcm_data.get(), pcm_data.get() + pcm_size);
@@ -224,6 +278,9 @@ void HobotTTSNode::PlaybackMessages() {
       } else {
         pcm_float = pcm_data.get();
       }
+#else
+       pcm_float = pcm_data.get();
+#endif
 
       std::vector<int16_t> pcm_int16;
       for (int i = 0; i < pcm_size; i++) {
@@ -253,6 +310,9 @@ void HobotTTSNode::StopPlayback() {
     if (processing_thread_.joinable()) {
       processing_thread_.join();
     }
+    if (resample_thread_.joinable()) {
+      resample_thread_.join();
+    }
     if (playback_thread_.joinable()) {
       playback_thread_.join();
     }
@@ -269,11 +329,14 @@ std::vector<float> HobotTTSNode::resampleAudio(const std::vector<float>& input, 
     std::vector<float> output(estimatedOutputSize);
     // 创建重采样状态
     int error;
-    SRC_STATE* state = src_new(SRC_SINC_BEST_QUALITY, 1, &error);
-    if (error) {
-        std::cerr << "Failed to create resampler: " << src_strerror(error) << std::endl;
-        return {};
-    }
+    //if (state == nullptr) {
+      SRC_STATE* state = src_new(SRC_SINC_BEST_QUALITY, 1, &error);
+      //state = src_new(SRC_SINC_BEST_QUALITY, 1, &error);
+      if (error) {
+          std::cerr << "Failed to create resampler: " << src_strerror(error) << std::endl;
+          return {};
+      }
+    //}
     // 配置重采样数据结构
     SRC_DATA srcData;
     srcData.data_in = input.data();

@@ -166,7 +166,13 @@ void HobotTTSNode::ProcessMessages() {
         startPos = index + 1;
       }
       if (isspace(input[index])) {
-        input[index] = ' ';
+        // input[index] = ' ';
+        segment = input.substr(startPos, index - startPos);
+        if (!segment.empty()) {
+          segments.push_back(segment);
+          segment.clear();
+        }
+        startPos = index + 1;
       }
       if (isupper(input[index])) {
         input[index] = tolower(input[index]);

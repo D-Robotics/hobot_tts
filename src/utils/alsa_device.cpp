@@ -204,6 +204,7 @@ static int set_hwparams(alsa_device_t *adev, snd_pcm_hw_params_t *params,
   /* set the stream rate */
   rrate = adev->rate;
   err = snd_pcm_hw_params_set_rate(handle, params, adev->rate, 0);
+  //err = snd_pcm_hw_params_set_rate_near(handle, params, &adev->rate, (int *)&adev->direct);
   if (err < 0) {
     fprintf(stderr, "Rate %iHz not available for playback: %s\n", adev->rate,
             snd_strerror(err));

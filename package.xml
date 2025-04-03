@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>hobot_tts</name>
-  <version>2.0.5</version>
+  <version>2.0.6</version>
   <description>Hobot Text To Speech</description>
   <maintainer email="zhuo.wang@d-robotics.cc">zhuo.wang</maintainer>
   <license>Apache License 2.0</license>

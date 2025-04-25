@@ -41,7 +41,6 @@ class HobotTTSNode {
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr text_subscription_;
   std::string topic_subscription_name_ = "/tts_text";
   std::string playback_device_name_ = "hw:0,1";
-  int device_rate_ = 16000;
 
   void MessageCallback(const std_msgs::msg::String::SharedPtr msg);
 
@@ -53,8 +52,6 @@ class HobotTTSNode {
 
   int ConvertToPCM(const std::string& msg, std::unique_ptr<float[]>& pcm_data,
                    int& pcm_size);
-
-  std::vector<float> resampleAudio(const std::vector<float>& input, int inputSampleRate, int outputSampleRate);
 
   std::queue<std_msgs::msg::String::SharedPtr> message_queue_;
   std::mutex mutex_;
@@ -74,7 +71,6 @@ class HobotTTSNode {
   void* tts_ = nullptr;
   alsa_device_t* speaker_device_ = nullptr;
   char* pcm_data_ = nullptr;
-  struct audio_info info_;
 };
 
 }  // namespace hobot_tts

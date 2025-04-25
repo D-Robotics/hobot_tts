@@ -36,8 +36,6 @@ find_package(ament_cmake REQUIRED)
 # find_package(<dependency> REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(SAMPLERATE REQUIRED samplerate)
 
 include_directories(
   include
@@ -63,7 +61,6 @@ target_link_libraries(hobot_tts
   tts
   onnxruntime
   asound
-  samplerate
 )
 
 install(TARGETS

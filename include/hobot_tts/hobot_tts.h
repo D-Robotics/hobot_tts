@@ -26,7 +26,6 @@
 #include "std_msgs/msg/string.hpp"
 #include "tts_api.h"
 #include "utils/alsa_device.h"
-#include <samplerate.h>
 
 namespace hobot_tts {
 
@@ -52,9 +51,6 @@ class HobotTTSNode {
 
   void StopPlayback();
 
-  void ResampleMessages();
-
-
   int ConvertToPCM(const std::string& msg, std::unique_ptr<float[]>& pcm_data,
                    int& pcm_size);
 
@@ -68,13 +64,8 @@ class HobotTTSNode {
   std::mutex playback_mutex_;
   std::condition_variable cv_playback_;
 
-  std::queue<std::pair<std::unique_ptr<float[]>, int>> resample_queue_;
-  std::mutex resample_mutex_;
-  std::condition_variable cv_resample_;
-
   std::atomic<bool> stop_playback_{false};
   std::thread processing_thread_;
-  std::thread resample_thread_;
   std::thread playback_thread_;
 
   static constexpr size_t kMaxMessageQueueSize = 10;
@@ -84,7 +75,6 @@ class HobotTTSNode {
   alsa_device_t* speaker_device_ = nullptr;
   char* pcm_data_ = nullptr;
   struct audio_info info_;
-  //SRC_STATE* state;
 };
 
 }  // namespace hobot_tts
